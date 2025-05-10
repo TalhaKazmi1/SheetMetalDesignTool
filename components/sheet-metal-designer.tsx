@@ -6,6 +6,7 @@ import { toPng, toSvg } from "html-to-image"
 import { saveAs } from "file-saver"
 import { toast } from "sonner"
 import { writeDxf } from "@/lib/dxf-writer"
+import dynamic from "next/dynamic"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -16,6 +17,12 @@ import { SheetCanvas } from "@/components/sheet-canvas"
 // import { FoldLinesList } from "@/components/fold-lines-list"
 import { SavedDesignsList } from "@/components/saved-designs-list"
 import { FoldLinesList } from "./fold-line-list"
+
+// Dynamically import the 3D preview component with no SSR
+const SheetMetal3DPreview = dynamic(
+  () => import("@/components/sheet-metal-3d-preview").then((mod) => mod.SheetMetal3DPreview),
+  { ssr: false },
+)
 
 export interface FoldLine {
   id: string
@@ -35,7 +42,7 @@ const DEFAULT_DESIGN: SheetDesign = {
   id: "default",
   name: "New Design",
   width: 300,
-  length: 500,
+  length: 300,
   foldLines: [],
 }
 
@@ -238,19 +245,29 @@ export function SheetMetalDesigner() {
                 </Button>
               </div>
             </div>
-            {/* Reduced height from 500px to 400px and made it responsive */}
-            <div
-              ref={canvasRef}
-              className="bg-white border rounded-lg overflow-auto flex-grow"
-              style={{ height: "calc(100vh - 300px)", maxHeight: "400px" }}
-            >
-              <div className="relative" style={{ transform: `scale(${zoom})`, transformOrigin: "top left" }}>
-                <SheetCanvas
-                  width={design.width}
-                  length={design.length}
-                  foldLines={design.foldLines}
-                  updateFoldLine={updateFoldLine}
-                />
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-grow">
+              <div
+                className="lg:col-span-2"
+                ref={canvasRef}
+                style={{ height: "calc(100vh - 300px)", maxHeight: "400px" }}
+              >
+                <div className="bg-white border rounded-lg overflow-auto h-full">
+                  <div className="relative" style={{ transform: `scale(${zoom})`, transformOrigin: "top left" }}>
+                    <SheetCanvas
+                      width={design.width}
+                      length={design.length}
+                      foldLines={design.foldLines}
+                      updateFoldLine={updateFoldLine}
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="lg:col-span-1 h-full">
+                <div className="bg-white border rounded-lg overflow-hidden h-full">
+                  {mounted && (
+                    <SheetMetal3DPreview width={design.width} length={design.length} foldLines={design.foldLines} />
+                  )}
+                </div>
               </div>
             </div>
           </CardContent>

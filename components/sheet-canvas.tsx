@@ -1,6 +1,7 @@
 "use client"
 
 import type React from "react"
+
 import { useRef, useState, useEffect } from "react"
 import type { FoldLine } from "@/components/sheet-metal-designer"
 
@@ -34,6 +35,7 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
   // Handle mouse down on a fold line
   const handleMouseDown = (id: string) => (e: React.MouseEvent) => {
     e.preventDefault()
+    e.stopPropagation()
     setDragging(id)
   }
 
@@ -42,7 +44,8 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
     if (!dragging || !containerRef.current) return
 
     const rect = containerRef.current.getBoundingClientRect()
-    const relativeY = (e.clientY - rect.top) / scale
+    // Calculate position relative to the container, accounting for padding
+    const relativeY = (e.clientY - rect.top - 20) / scale
 
     // Ensure the fold line stays within the sheet boundaries
     const newPosition = Math.max(0, Math.min(length, Math.round(relativeY)))
@@ -55,6 +58,32 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
 
   // Handle mouse up to stop dragging
   const handleMouseUp = () => {
+    setDragging(null)
+  }
+
+  // Handle touch events for mobile support
+  const handleTouchStart = (id: string) => (e: React.TouchEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragging(id)
+  }
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!dragging || !containerRef.current || e.touches.length === 0) return
+
+    const rect = containerRef.current.getBoundingClientRect()
+    const touch = e.touches[0]
+    const relativeY = (touch.clientY - rect.top - 20) / scale
+
+    const newPosition = Math.max(0, Math.min(length, Math.round(relativeY)))
+
+    const foldLine = foldLines.find((line) => line.id === dragging)
+    if (foldLine) {
+      updateFoldLine(dragging, newPosition, foldLine.direction)
+    }
+  }
+
+  const handleTouchEnd = () => {
     setDragging(null)
   }
 
@@ -73,7 +102,7 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
   return (
     <div
       ref={containerRef}
-      className="relative cursor-grab"
+      className="relative mx-14 my-5 cursor-grab"
       style={{
         width: `${width * scale}px`,
         height: `${length * scale}px`,
@@ -82,6 +111,8 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
     >
       {/* Sheet metal */}
       <div
@@ -97,12 +128,13 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
           <div key={line.id} className="relative">
             {/* Fold line */}
             <div
-              className={`absolute left-0 w-full h-[2px] ${dragging === line.id ? "bg-blue-500" : "bg-red-500"} cursor-ns-resize`}
+              className={`absolute left-0 w-full h-[3px] ${dragging === line.id ? "bg-blue-500" : "bg-red-500"} cursor-ns-resize`}
               style={{
                 top: `${line.position * scale}px`,
                 zIndex: 10,
               }}
               onMouseDown={handleMouseDown(line.id)}
+              onTouchStart={handleTouchStart(line.id)}
             />
 
             {/* Fold direction indicator */}
@@ -133,9 +165,9 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
         ))}
 
         {/* Dimensions labels */}
-        <div className="absolute -top-0 left-0 w-full flex justify-center text-xs">Width: {width}mm</div>
+        <div className="absolute -top-6 left-0 w-full flex justify-center text-xs">Width: {width}mm</div>
         <div
-          className="absolute top-0 -left-0 h-full flex items-center text-xs"
+          className="absolute top-0 -left-6 h-full flex items-center text-xs"
           style={{ transform: "rotate(-90deg)", transformOrigin: "left center" }}
         >
           Length: {length}mm
