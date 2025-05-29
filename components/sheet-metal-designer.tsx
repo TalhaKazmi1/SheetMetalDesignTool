@@ -1,12 +1,11 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Download, Save, ZoomIn, ZoomOut } from "lucide-react"
+import { Download, Save } from "lucide-react"
 import { toPng, toSvg } from "html-to-image"
 import { saveAs } from "file-saver"
 import { toast } from "sonner"
 import { writeDxf } from "@/lib/dxf-writer"
-import dynamic from "next/dynamic"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -14,15 +13,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SheetCanvas } from "@/components/sheet-canvas"
+import { SheetMetal3DCanvas } from "@/components/sheet-metal-3d-canvas"
 // import { FoldLinesList } from "@/components/fold-lines-list"
 import { SavedDesignsList } from "@/components/saved-designs-list"
 import { FoldLinesList } from "./fold-line-list"
-
-// Dynamically import the 3D preview component with no SSR
-const SheetMetal3DPreview = dynamic(
-  () => import("@/components/sheet-metal-3d-preview").then((mod) => mod.SheetMetal3DPreview),
-  { ssr: false },
-)
 
 export interface FoldLine {
   id: string
@@ -49,7 +43,6 @@ const DEFAULT_DESIGN: SheetDesign = {
 export function SheetMetalDesigner() {
   const [design, setDesign] = useState<SheetDesign>({ ...DEFAULT_DESIGN })
   const [designName, setDesignName] = useState("New Design")
-  const [zoom, setZoom] = useState(1)
   const canvasRef = useRef<HTMLDivElement>(null)
   const [mounted, setMounted] = useState(false)
 
@@ -214,12 +207,8 @@ export function SheetMetalDesigner() {
     }
   }
 
-  // Zoom controls
-  const zoomIn = () => setZoom((prev) => Math.min(prev + 0.1, 2))
-  const zoomOut = () => setZoom((prev) => Math.max(prev - 0.1, 0.5))
-
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-screen">
       <div className="lg:col-span-2 flex flex-col">
         <Card className="mb-4 flex-grow">
           <CardContent className="p-4 flex flex-col h-full">
@@ -235,39 +224,18 @@ export function SheetMetalDesigner() {
                   <Save className="h-4 w-4" />
                 </Button>
               </div>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="icon" onClick={zoomOut}>
-                  <ZoomOut className="h-4 w-4" />
-                </Button>
-                <span className="text-sm">{Math.round(zoom * 100)}%</span>
-                <Button variant="outline" size="icon" onClick={zoomIn}>
-                  <ZoomIn className="h-4 w-4" />
-                </Button>
-              </div>
             </div>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-grow">
-              <div
-                className="lg:col-span-2"
-                ref={canvasRef}
-                style={{ height: "calc(100vh - 300px)", maxHeight: "400px" }}
-              >
-                <div className="bg-white border rounded-lg overflow-auto h-full">
-                  <div className="relative" style={{ transform: `scale(${zoom})`, transformOrigin: "top left" }}>
-                    <SheetCanvas
-                      width={design.width}
-                      length={design.length}
-                      foldLines={design.foldLines}
-                      updateFoldLine={updateFoldLine}
-                    />
-                  </div>
-                </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-grow min-h-0">
+              <div className="lg:col-span-2 min-h-0" ref={canvasRef}>
+                <SheetCanvas
+                  width={design.width}
+                  length={design.length}
+                  foldLines={design.foldLines}
+                  updateFoldLine={updateFoldLine}
+                />
               </div>
-              <div className="lg:col-span-1 h-full">
-                <div className="bg-white border rounded-lg overflow-hidden h-full">
-                  {mounted && (
-                    <SheetMetal3DPreview width={design.width} length={design.length} foldLines={design.foldLines} />
-                  )}
-                </div>
+              <div className="lg:col-span-1 min-h-0">
+                <SheetMetal3DCanvas width={design.width} length={design.length} foldLines={design.foldLines} />
               </div>
             </div>
           </CardContent>

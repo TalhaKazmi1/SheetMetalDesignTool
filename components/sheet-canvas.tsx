@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useRef, useState, useEffect } from "react"
+import { useRef, useEffect, useState, useCallback } from "react"
 import type { FoldLine } from "@/components/sheet-metal-designer"
 
 interface SheetCanvasProps {
@@ -13,86 +13,263 @@ interface SheetCanvasProps {
 }
 
 export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetCanvasProps) {
-  const [dragging, setDragging] = useState<string | null>(null)
-  const [scale, setScale] = useState(1)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const [dragging, setDragging] = useState<string | null>(null)
+  const [panning, setPanning] = useState(false)
+  const [scale, setScale] = useState(1)
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 })
+  const [lastPanPoint, setLastPanPoint] = useState({ x: 0, y: 0 })
   const [mounted, setMounted] = useState(false)
 
-  // Set mounted state
   useEffect(() => {
     setMounted(true)
   }, [])
 
-  // Calculate scale to fit the sheet in the viewport
+  // Calculate scale to fit the sheet in the viewport with padding
   useEffect(() => {
     if (containerRef.current) {
-      const parentWidth = containerRef.current.parentElement?.clientWidth || 800
-      const scaleFactor = Math.min(1, (parentWidth - 40) / width)
-      setScale(scaleFactor)
-    }
-  }, [width, containerRef])
+      const container = containerRef.current
+      const containerWidth = container.clientWidth - 40 // Padding
+      const containerHeight = container.clientHeight - 40 // Padding
 
-  // Handle mouse down on a fold line
-  const handleMouseDown = (id: string) => (e: React.MouseEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setDragging(id)
+      // Calculate scale to fit both width and height
+      const scaleX = containerWidth / width
+      const scaleY = containerHeight / length
+      const newScale = Math.min(scaleX, scaleY, 1) // Don't scale up beyond 1:1
+
+      setScale(newScale)
+
+      // Center the sheet when scale changes
+      const scaledWidth = width * newScale
+      const scaledHeight = length * newScale
+      setPanOffset({
+        x: (containerWidth - scaledWidth) / 2,
+        y: (containerHeight - scaledHeight) / 2,
+      })
+    }
+  }, [width, length, containerRef.current?.clientWidth, containerRef.current?.clientHeight])
+
+  // Draw the sheet and fold lines on canvas
+  const drawCanvas = useCallback(() => {
+    const canvas = canvasRef.current
+    const container = containerRef.current
+    if (!canvas || !container) return
+
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+
+    // Set canvas size to match container
+    const containerWidth = container.clientWidth
+    const containerHeight = container.clientHeight
+    canvas.width = containerWidth
+    canvas.height = containerHeight
+
+    // Clear canvas
+    ctx.clearRect(0, 0, containerWidth, containerHeight)
+
+    // Set background
+    ctx.fillStyle = "#f8fafc"
+    ctx.fillRect(0, 0, containerWidth, containerHeight)
+
+    // Calculate sheet position with pan offset
+    const sheetX = 20 + panOffset.x
+    const sheetY = 20 + panOffset.y
+    const sheetWidth = width * scale
+    const sheetHeight = length * scale
+
+    // Draw sheet background
+    ctx.fillStyle = "#f3f4f6"
+    ctx.strokeStyle = "#d1d5db"
+    ctx.lineWidth = 2
+    ctx.fillRect(sheetX, sheetY, sheetWidth, sheetHeight)
+    ctx.strokeRect(sheetX, sheetY, sheetWidth, sheetHeight)
+
+    // Draw dimensions labels
+    ctx.fillStyle = "#374151"
+    ctx.font = "12px Arial"
+    ctx.textAlign = "center"
+    ctx.fillText(`Width: ${width}mm`, sheetX + sheetWidth / 2, sheetY - 5)
+
+    ctx.save()
+    ctx.translate(sheetX - 10, sheetY + sheetHeight / 2)
+    ctx.rotate(-Math.PI / 2)
+    ctx.fillText(`Length: ${length}mm`, 0, 0)
+    ctx.restore()
+
+    // Draw fold lines
+    foldLines.forEach((line) => {
+      const y = sheetY + line.position * scale
+
+      // Only draw if fold line is within sheet bounds
+      if (y >= sheetY && y <= sheetY + sheetHeight) {
+        // Draw fold line
+        ctx.strokeStyle = dragging === line.id ? "#3b82f6" : "#ef4444"
+        ctx.lineWidth = 3
+        ctx.beginPath()
+        ctx.moveTo(sheetX, y)
+        ctx.lineTo(sheetX + sheetWidth, y)
+        ctx.stroke()
+
+        // Draw direction indicator
+        const indicatorX = sheetX + 20
+        const indicatorY = y
+        const indicatorSize = 12
+
+        ctx.fillStyle = line.direction === "up" ? "#10b981" : "#8b5cf6"
+        ctx.strokeStyle = line.direction === "up" ? "#10b981" : "#8b5cf6"
+        ctx.lineWidth = 2
+
+        // Draw circle background
+        ctx.beginPath()
+        ctx.arc(indicatorX, indicatorY, indicatorSize, 0, Math.PI * 2)
+        ctx.fillStyle = "#ffffff"
+        ctx.fill()
+        ctx.stroke()
+
+        // Draw arrow
+        ctx.fillStyle = line.direction === "up" ? "#10b981" : "#8b5cf6"
+        ctx.font = "14px Arial"
+        ctx.textAlign = "center"
+        ctx.textBaseline = "middle"
+        ctx.fillText(line.direction === "up" ? "↑" : "↓", indicatorX, indicatorY)
+
+        // Draw position label
+        const labelX = sheetX + sheetWidth - 50
+        const labelY = y
+        ctx.fillStyle = "#374151"
+        ctx.fillRect(labelX, labelY - 8, 45, 16)
+        ctx.fillStyle = "#ffffff"
+        ctx.font = "10px Arial"
+        ctx.textAlign = "center"
+        ctx.textBaseline = "middle"
+        ctx.fillText(`${line.position}mm`, labelX + 22, labelY)
+      }
+    })
+
+    // Draw pan instructions
+    ctx.fillStyle = "#6b7280"
+    ctx.font = "11px Arial"
+    ctx.textAlign = "left"
+    ctx.fillText("Drag to pan • Click fold lines to move • Click arrows to change direction", 10, containerHeight - 10)
+  }, [width, length, foldLines, scale, dragging, panOffset])
+
+  // Redraw canvas when dependencies change
+  useEffect(() => {
+    if (mounted) {
+      drawCanvas()
+    }
+  }, [drawCanvas, mounted])
+
+  // Get cursor style based on interaction state
+  const getCursorStyle = () => {
+    if (panning) return "grabbing"
+    if (dragging) return "ns-resize"
+    return "grab"
   }
 
-  // Handle mouse move for dragging fold lines
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!dragging || !containerRef.current) return
+  // Handle mouse events
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current
+    if (!canvas) return
 
-    const rect = containerRef.current.getBoundingClientRect()
-    // Calculate position relative to the container, accounting for padding
-    const relativeY = (e.clientY - rect.top - 20) / scale
+    const rect = canvas.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
 
-    // Ensure the fold line stays within the sheet boundaries
-    const newPosition = Math.max(0, Math.min(length, Math.round(relativeY)))
+    const sheetX = 20 + panOffset.x
+    const sheetY = 20 + panOffset.y
+    const sheetWidth = width * scale
+    const sheetHeight = length * scale
 
-    const foldLine = foldLines.find((line) => line.id === dragging)
-    if (foldLine) {
-      updateFoldLine(dragging, newPosition, foldLine.direction)
+    // Check if click is on a fold line first
+    let clickedOnFoldLine = false
+    for (const line of foldLines) {
+      const lineY = sheetY + line.position * scale
+      if (Math.abs(y - lineY) < 10 && x >= sheetX && x <= sheetX + sheetWidth) {
+        setDragging(line.id)
+        clickedOnFoldLine = true
+        break
+      }
+    }
+
+    // If not clicking on fold line, start panning
+    if (!clickedOnFoldLine) {
+      setPanning(true)
+      setLastPanPoint({ x, y })
     }
   }
 
-  // Handle mouse up to stop dragging
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const rect = canvas.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+
+    if (dragging) {
+      // Handle fold line dragging
+      const sheetY = 20 + panOffset.y
+      const newPosition = Math.max(0, Math.min(length, Math.round((y - sheetY) / scale)))
+
+      const foldLine = foldLines.find((line) => line.id === dragging)
+      if (foldLine) {
+        updateFoldLine(dragging, newPosition, foldLine.direction)
+      }
+    } else if (panning) {
+      // Handle panning
+      const deltaX = x - lastPanPoint.x
+      const deltaY = y - lastPanPoint.y
+
+      setPanOffset((prev) => ({
+        x: prev.x + deltaX,
+        y: prev.y + deltaY,
+      }))
+
+      setLastPanPoint({ x, y })
+    }
+  }
+
   const handleMouseUp = () => {
     setDragging(null)
+    setPanning(false)
   }
 
-  // Handle touch events for mobile support
-  const handleTouchStart = (id: string) => (e: React.TouchEvent) => {
+  // Handle click on direction indicator to toggle direction
+  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (dragging || panning) return
+
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const rect = canvas.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+
+    const sheetX = 20 + panOffset.x
+    const sheetY = 20 + panOffset.y
+
+    // Check if click is on a direction indicator
+    for (const line of foldLines) {
+      const indicatorX = sheetX + 20
+      const indicatorY = sheetY + line.position * scale
+      const distance = Math.sqrt((x - indicatorX) ** 2 + (y - indicatorY) ** 2)
+
+      if (distance <= 12) {
+        const newDirection = line.direction === "up" ? "down" : "up"
+        updateFoldLine(line.id, line.position, newDirection)
+        break
+      }
+    }
+  }
+
+  // Handle mouse wheel for zooming
+  const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault()
-    e.stopPropagation()
-    setDragging(id)
-  }
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (!dragging || !containerRef.current || e.touches.length === 0) return
-
-    const rect = containerRef.current.getBoundingClientRect()
-    const touch = e.touches[0]
-    const relativeY = (touch.clientY - rect.top - 20) / scale
-
-    const newPosition = Math.max(0, Math.min(length, Math.round(relativeY)))
-
-    const foldLine = foldLines.find((line) => line.id === dragging)
-    if (foldLine) {
-      updateFoldLine(dragging, newPosition, foldLine.direction)
-    }
-  }
-
-  const handleTouchEnd = () => {
-    setDragging(null)
-  }
-
-  // Toggle fold direction
-  const toggleDirection = (id: string) => {
-    const foldLine = foldLines.find((line) => line.id === id)
-    if (foldLine) {
-      updateFoldLine(id, foldLine.position, foldLine.direction === "up" ? "down" : "up")
-    }
+    const delta = e.deltaY > 0 ? -0.1 : 0.1
+    const newScale = Math.max(0.1, Math.min(2, scale + delta))
+    setScale(newScale)
   }
 
   if (!mounted) {
@@ -102,77 +279,20 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
   return (
     <div
       ref={containerRef}
-      className="relative mx-14 my-5 cursor-grab"
-      style={{
-        width: `${width * scale}px`,
-        height: `${length * scale}px`,
-        padding: "20px",
-      }}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
+      className="w-full h-full border border-gray-300 rounded-lg overflow-hidden"
+      style={{ minHeight: "300px" }}
     >
-      {/* Sheet metal */}
-      <div
-        className="bg-gray-100 border border-gray-300"
-        style={{
-          width: `${width * scale}px`,
-          height: `${length * scale}px`,
-          position: "relative",
-        }}
-      >
-        {/* Fold lines */}
-        {foldLines.map((line) => (
-          <div key={line.id} className="relative">
-            {/* Fold line */}
-            <div
-              className={`absolute left-0 w-full h-[3px] ${dragging === line.id ? "bg-blue-500" : "bg-red-500"} cursor-ns-resize`}
-              style={{
-                top: `${line.position * scale}px`,
-                zIndex: 10,
-              }}
-              onMouseDown={handleMouseDown(line.id)}
-              onTouchStart={handleTouchStart(line.id)}
-            />
-
-            {/* Fold direction indicator */}
-            <div
-              className={`absolute left-1 w-6 h-6 rounded-full flex items-center justify-center cursor-pointer bg-white border ${line.direction === "up" ? "border-green-500" : "border-purple-500"}`}
-              style={{
-                top: `${line.position * scale - 12}px`,
-                zIndex: 20,
-              }}
-              onClick={() => toggleDirection(line.id)}
-            >
-              <span className={line.direction === "up" ? "text-green-500" : "text-purple-500"}>
-                {line.direction === "up" ? "↑" : "↓"}
-              </span>
-            </div>
-
-            {/* Position label */}
-            <div
-              className="absolute right-1 bg-white text-xs px-1 rounded border border-gray-300"
-              style={{
-                top: `${line.position * scale - 8}px`,
-                zIndex: 20,
-              }}
-            >
-              {line.position}mm
-            </div>
-          </div>
-        ))}
-
-        {/* Dimensions labels */}
-        <div className="absolute -top-6 left-0 w-full flex justify-center text-xs">Width: {width}mm</div>
-        <div
-          className="absolute top-0 -left-6 h-full flex items-center text-xs"
-          style={{ transform: "rotate(-90deg)", transformOrigin: "left center" }}
-        >
-          Length: {length}mm
-        </div>
-      </div>
+      <canvas
+        ref={canvasRef}
+        className="w-full h-full"
+        style={{ cursor: getCursorStyle() }}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        onClick={handleCanvasClick}
+        onWheel={handleWheel}
+      />
     </div>
   )
 }
