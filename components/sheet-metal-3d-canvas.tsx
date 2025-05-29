@@ -369,7 +369,7 @@ export function SheetMetal3DCanvas({ width, length, foldLines }: SheetMetal3DCan
 
     setPanning(true)
     setLastPanPoint({ x, y })
-    setAutoRotate(false) // Stop auto-rotation when user interacts
+    // setAutoRotate(false) // Stop auto-rotation when user interacts
   }
 
   const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {

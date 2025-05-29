@@ -183,6 +183,21 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
     }
   }
 
+  // Check if point is on a fold line
+  const getFoldLineAtPoint = (x: number, y: number) => {
+    const sheetX = 20 + panOffset.x
+    const sheetY = 20 + panOffset.y
+    const sheetWidth = width * scale
+
+    for (const line of foldLines) {
+      const lineY = sheetY + line.position * scale
+      if (Math.abs(y - lineY) < 15 && x >= sheetX && x <= sheetX + sheetWidth) {
+        return line.id
+      }
+    }
+    return null
+  }
+
   // Handle mouse events
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
@@ -190,24 +205,12 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
 
     const { x, y } = getCanvasCoordinates(e.clientX, e.clientY)
 
-    const sheetX = 20 + panOffset.x
-    const sheetY = 20 + panOffset.y
-    const sheetWidth = width * scale
-    const sheetHeight = length * scale
-
     // Check if click is on a fold line first
-    let clickedOnFoldLine = false
-    for (const line of foldLines) {
-      const lineY = sheetY + line.position * scale
-      if (Math.abs(y - lineY) < 10 && x >= sheetX && x <= sheetX + sheetWidth) {
-        setDragging(line.id)
-        clickedOnFoldLine = true
-        break
-      }
-    }
-
-    // If not clicking on fold line, start panning
-    if (!clickedOnFoldLine) {
+    const foldLineId = getFoldLineAtPoint(x, y)
+    if (foldLineId) {
+      setDragging(foldLineId)
+    } else {
+      // If not clicking on fold line, start panning
       setPanning(true)
       setLastPanPoint({ x, y })
     }
@@ -281,8 +284,12 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
     setScale(newScale)
   }
 
-  // Touch event handlers for mobile
+  // Touch event handlers for mobile - FIXED VERSION
   const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    // Prevent default browser behavior
+    e.preventDefault()
+    e.stopPropagation()
+
     if (e.touches.length !== 1) return
 
     const touch = e.touches[0]
@@ -293,31 +300,25 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
     setTouchStartPos({ x, y })
     setIsTouchDragging(false)
 
-    const sheetX = 20 + panOffset.x
-    const sheetY = 20 + panOffset.y
-    const sheetWidth = width * scale
-    const sheetHeight = length * scale
-
     // Check if touch is on a fold line first
-    let touchedFoldLine = false
-    for (const line of foldLines) {
-      const lineY = sheetY + line.position * scale
-      // Make touch target area larger on mobile
-      if (Math.abs(y - lineY) < 15 && x >= sheetX && x <= sheetX + sheetWidth) {
-        setDragging(line.id)
-        touchedFoldLine = true
-        break
-      }
-    }
-
-    // If not touching a fold line, start panning
-    if (!touchedFoldLine) {
+    const foldLineId = getFoldLineAtPoint(x, y)
+    if (foldLineId) {
+      setDragging(foldLineId)
+      // Don't start panning when touching a fold line
+    } else {
+      // If not touching a fold line, start panning
       setPanning(true)
       setLastPanPoint({ x, y })
     }
   }
 
   const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    // Prevent default browser behavior ONLY when we're actively interacting
+    if (dragging || panning) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+
     if (e.touches.length !== 1) return
 
     const touch = e.touches[0]
@@ -334,7 +335,10 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
     }
 
     if (dragging) {
-      // Handle fold line dragging
+      // Handle fold line dragging - prevent all default behavior
+      e.preventDefault()
+      e.stopPropagation()
+
       const sheetY = 20 + panOffset.y
       const newPosition = Math.max(0, Math.min(length, Math.round((y - sheetY) / scale)))
 
@@ -342,8 +346,11 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
       if (foldLine) {
         updateFoldLine(dragging, newPosition, foldLine.direction)
       }
-    } else if (panning) {
-      // Handle panning
+    } else if (panning && isTouchDragging) {
+      // Handle panning - only prevent default when actually panning
+      e.preventDefault()
+      e.stopPropagation()
+
       const deltaX = x - lastPanPoint.x
       const deltaY = y - lastPanPoint.y
 
@@ -357,6 +364,12 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
   }
 
   const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    // Prevent default behavior when ending interaction
+    if (dragging || (panning && isTouchDragging)) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+
     // If it was a short tap (not a drag) and not on a fold line
     const touchDuration = Date.now() - touchStartTime
 
@@ -379,6 +392,9 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
 
         if (distance <= 20) {
           // Larger touch target for mobile
+          e.preventDefault()
+          e.stopPropagation()
+
           const newDirection = line.direction === "up" ? "down" : "up"
           updateFoldLine(line.id, line.position, newDirection)
           break
@@ -400,7 +416,10 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
       <canvas
         ref={canvasRef}
         className="w-full h-full"
-        style={{ cursor: getCursorStyle() }}
+        style={{
+          cursor: getCursorStyle(),
+          touchAction: "none", // Disable touch actions when dragging fold lines
+        }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
