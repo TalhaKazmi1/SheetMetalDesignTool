@@ -31,7 +31,7 @@ export function FoldLinesList({ foldLines, sheetLength, onAdd, onUpdate, onRemov
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-medium">Fold Lines</h3>
-        <Button onClick={onAdd} size="sm">
+        <Button onClick={onAdd} size="sm" id="add-fold-line-btn">
           Add Fold Line
         </Button>
       </div>
@@ -77,13 +77,13 @@ export function FoldLinesList({ foldLines, sheetLength, onAdd, onUpdate, onRemov
                 >
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="up" id={`direction-up-${line.id}`} />
-                    <Label htmlFor={`direction-up-${line.id}`} className="cursor-pointer">
+                    <Label htmlFor={`direction-up-${line.id}`} className="cursor-pointer text-sm">
                       Up
                     </Label>
                   </div>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="down" id={`direction-down-${line.id}`} />
-                    <Label htmlFor={`direction-down-${line.id}`} className="cursor-pointer">
+                    <Label htmlFor={`direction-down-${line.id}`} className="cursor-pointer text-sm">
                       Down
                     </Label>
                   </div>

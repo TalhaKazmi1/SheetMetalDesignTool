@@ -36,7 +36,7 @@ const DEFAULT_DESIGN: SheetDesign = {
   id: "default",
   name: "New Design",
   width: 300,
-  length: 300,
+  length: 200,
   foldLines: [],
 }
 
@@ -46,11 +46,9 @@ export function SheetMetalDesigner() {
   const canvasRef = useRef<HTMLDivElement>(null)
   const [mounted, setMounted] = useState(false)
 
-  // Only run after component is mounted
   useEffect(() => {
     setMounted(true)
 
-    // Load saved designs from local storage
     const savedDesign = localStorage.getItem("currentDesign")
     if (savedDesign) {
       try {
@@ -63,12 +61,10 @@ export function SheetMetalDesigner() {
     }
   }, [])
 
-  // If not mounted yet, show a simple loading state
   if (!mounted) {
     return <div className="p-4 text-center">Loading designer...</div>
   }
 
-  // Update dimensions
   const updateDimensions = (field: "width" | "length", value: string) => {
     const numValue = Number.parseInt(value)
     if (!isNaN(numValue) && numValue > 0) {
@@ -76,7 +72,6 @@ export function SheetMetalDesigner() {
     }
   }
 
-  // Add a new fold line
   const addFoldLine = () => {
     const newPosition = Math.round(design.length / 2)
     const newFoldLine: FoldLine = {
@@ -90,7 +85,6 @@ export function SheetMetalDesigner() {
     }))
   }
 
-  // Update a fold line
   const updateFoldLine = (id: string, position: number, direction: "up" | "down") => {
     setDesign((prev) => ({
       ...prev,
@@ -98,7 +92,6 @@ export function SheetMetalDesigner() {
     }))
   }
 
-  // Remove a fold line
   const removeFoldLine = (id: string) => {
     setDesign((prev) => ({
       ...prev,
@@ -106,17 +99,14 @@ export function SheetMetalDesigner() {
     }))
   }
 
-  // Save the current design to local storage
   const saveDesign = () => {
     const newId = design.id === "default" ? `design-${Math.random().toString(36).substring(2, 9)}` : design.id
     const designToSave = { ...design, id: newId, name: designName }
 
     setDesign(designToSave)
 
-    // Save to localStorage
     localStorage.setItem("currentDesign", JSON.stringify(designToSave))
 
-    // Save to designs list
     const savedDesigns = JSON.parse(localStorage.getItem("savedDesigns") || "[]")
     const existingIndex = savedDesigns.findIndex((d: SheetDesign) => d.id === designToSave.id)
 
@@ -133,20 +123,17 @@ export function SheetMetalDesigner() {
     })
   }
 
-  // Load a design
   const loadDesign = (designToLoad: SheetDesign) => {
     setDesign(designToLoad)
     setDesignName(designToLoad.name)
     localStorage.setItem("currentDesign", JSON.stringify(designToLoad))
   }
 
-  // Create a new design
   const newDesign = () => {
     setDesign({ ...DEFAULT_DESIGN, id: `design-${Math.random().toString(36).substring(2, 9)}` })
     setDesignName("New Design")
   }
 
-  // Export as PNG
   const exportAsPng = async () => {
     if (!canvasRef.current) return
 
@@ -168,7 +155,6 @@ export function SheetMetalDesigner() {
     }
   }
 
-  // Export as SVG
   const exportAsSvg = async () => {
     if (!canvasRef.current) return
 
@@ -189,7 +175,6 @@ export function SheetMetalDesigner() {
     }
   }
 
-  // Export as DXF
   const exportAsDxf = () => {
     try {
       const dxfContent = writeDxf(design)
@@ -208,112 +193,134 @@ export function SheetMetalDesigner() {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-screen">
-      <div className="lg:col-span-2 flex flex-col">
-        <Card className="mb-4 flex-grow">
-          <CardContent className="p-4 flex flex-col h-full">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Input
-                  value={designName}
-                  onChange={(e) => setDesignName(e.target.value)}
-                  className="max-w-[200px]"
-                  placeholder="Design Name"
-                />
-                <Button variant="outline" size="icon" onClick={saveDesign}>
-                  <Save className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-grow min-h-0">
-              <div className="lg:col-span-2 min-h-0" ref={canvasRef}>
-                <SheetCanvas
-                  width={design.width}
-                  length={design.length}
-                  foldLines={design.foldLines}
-                  updateFoldLine={updateFoldLine}
-                />
-              </div>
-              <div className="lg:col-span-1 min-h-0">
-                <SheetMetal3DCanvas width={design.width} length={design.length} foldLines={design.foldLines} />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <div className="flex flex-wrap gap-2 mb-4">
-          <Button onClick={exportAsPng}>
-            <Download className="mr-2 h-4 w-4" />
-            Export as PNG
-          </Button>
-          <Button onClick={exportAsSvg} variant="outline">
-            <Download className="mr-2 h-4 w-4" />
-            Export as SVG
-          </Button>
-          <Button onClick={exportAsDxf} variant="outline">
-            <Download className="mr-2 h-4 w-4" />
-            Export as DXF
-          </Button>
+    <div className="min-h-screen bg-gray-50">
+      <div className="container mx-auto p-4">
+        {/* Mobile: Controls at top, Desktop: Normal layout */}
+        <div className="flex flex-col lg:grid lg:grid-cols-4 gap-4">
+          {/* Controls Section */}
+          <div className="lg:col-span-1 order-1 lg:order-2">
+            <Tabs defaultValue="dimensions">
+              <TabsList className="grid grid-cols-3 w-full">
+                <TabsTrigger value="dimensions">Dimensions</TabsTrigger>
+                <TabsTrigger value="folds">Fold Lines</TabsTrigger>
+                <TabsTrigger value="saved">Saved</TabsTrigger>
+              </TabsList>
+              <TabsContent value="dimensions">
+                <Card>
+                  <CardContent className="pt-6 space-y-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="width">Width (mm)</Label>
+                      <Input
+                        id="width"
+                        type="number"
+                        value={design.width}
+                        onChange={(e) => updateDimensions("width", e.target.value)}
+                        min="10"
+                        max="2000"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="length">Length (mm)</Label>
+                      <Input
+                        id="length"
+                        type="number"
+                        value={design.length}
+                        onChange={(e) => updateDimensions("length", e.target.value)}
+                        min="10"
+                        max="2000"
+                      />
+                    </div>
+                    <Button onClick={newDesign} variant="outline" className="w-full">
+                      Create New Design
+                    </Button>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+              <TabsContent value="folds">
+                <Card>
+                  <CardContent className="pt-6">
+                    <FoldLinesList
+                      foldLines={design.foldLines}
+                      sheetLength={design.length}
+                      onAdd={addFoldLine}
+                      onUpdate={updateFoldLine}
+                      onRemove={removeFoldLine}
+                    />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+              <TabsContent value="saved">
+                <Card>
+                  <CardContent className="pt-6">
+                    <SavedDesignsList onLoad={loadDesign} />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
+          </div>
+
+          {/* Main Canvas Section */}
+          <div className="lg:col-span-3 order-2 lg:order-1">
+            <Card>
+              <CardContent className="p-4">
+                {/* Header */}
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={designName}
+                      onChange={(e) => setDesignName(e.target.value)}
+                      className="max-w-[200px]"
+                      placeholder="Design Name"
+                    />
+                    <Button variant="outline" size="icon" onClick={saveDesign}>
+                      <Save className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Canvas Grid - Fixed Height */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-10 mb-4">
+                  {/* 2D Sheet Canvas */}
+                  <div ref={canvasRef}>
+                    <h3 className="text-sm font-medium mb-2">2D Sheet View</h3>
+                    <div className="h-64 md:h-80">
+                      <SheetCanvas
+                        width={design.width}
+                        length={design.length}
+                        foldLines={design.foldLines}
+                        updateFoldLine={updateFoldLine}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 3D Preview Canvas */}
+                  <div>
+                    <h3 className="text-sm font-medium mb-2">3D Preview</h3>
+                    <div className="h-64 md:h-80">
+                      <SheetMetal3DCanvas width={design.width} length={design.length} foldLines={design.foldLines} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Export Buttons */}
+                <div className="flex flex-wrap gap-2">
+                  <Button onClick={exportAsPng} size="sm">
+                    <Download className="mr-2 h-4 w-4" />
+                    PNG
+                  </Button>
+                  <Button onClick={exportAsSvg} variant="outline" size="sm">
+                    <Download className="mr-2 h-4 w-4" />
+                    SVG
+                  </Button>
+                  <Button onClick={exportAsDxf} variant="outline" size="sm">
+                    <Download className="mr-2 h-4 w-4" />
+                    DXF
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
-      </div>
-      <div>
-        <Tabs defaultValue="dimensions">
-          <TabsList className="grid grid-cols-3 w-full">
-            <TabsTrigger value="dimensions">Dimensions</TabsTrigger>
-            <TabsTrigger value="folds">Fold Lines</TabsTrigger>
-            <TabsTrigger value="saved">Saved</TabsTrigger>
-          </TabsList>
-          <TabsContent value="dimensions">
-            <Card>
-              <CardContent className="pt-6 space-y-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="width">Width (mm)</Label>
-                  <Input
-                    id="width"
-                    type="number"
-                    value={design.width}
-                    onChange={(e) => updateDimensions("width", e.target.value)}
-                    min="10"
-                    max="2000"
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="length">Length (mm)</Label>
-                  <Input
-                    id="length"
-                    type="number"
-                    value={design.length}
-                    onChange={(e) => updateDimensions("length", e.target.value)}
-                    min="10"
-                    max="2000"
-                  />
-                </div>
-                <Button onClick={newDesign} variant="outline" className="w-full">
-                  Create New Design
-                </Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
-          <TabsContent value="folds">
-            <Card>
-              <CardContent className="pt-6">
-                <FoldLinesList
-                  foldLines={design.foldLines}
-                  sheetLength={design.length}
-                  onAdd={addFoldLine}
-                  onUpdate={updateFoldLine}
-                  onRemove={removeFoldLine}
-                />
-              </CardContent>
-            </Card>
-          </TabsContent>
-          <TabsContent value="saved">
-            <Card>
-              <CardContent className="pt-6">
-                <SavedDesignsList onLoad={loadDesign} />
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
       </div>
     </div>
   )

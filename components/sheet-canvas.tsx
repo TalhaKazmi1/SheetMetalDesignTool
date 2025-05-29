@@ -168,14 +168,24 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
     return "grab"
   }
 
+  // Convert page coordinates to canvas coordinates
+  const getCanvasCoordinates = (pageX: number, pageY: number) => {
+    const canvas = canvasRef.current
+    if (!canvas) return { x: 0, y: 0 }
+
+    const rect = canvas.getBoundingClientRect()
+    return {
+      x: pageX - rect.left,
+      y: pageY - rect.top,
+    }
+  }
+
   // Handle mouse events
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
     if (!canvas) return
 
-    const rect = canvas.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
+    const { x, y } = getCanvasCoordinates(e.clientX, e.clientY)
 
     const sheetX = 20 + panOffset.x
     const sheetY = 20 + panOffset.y
@@ -204,9 +214,7 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
     const canvas = canvasRef.current
     if (!canvas) return
 
-    const rect = canvas.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
+    const { x, y } = getCanvasCoordinates(e.clientX, e.clientY)
 
     if (dragging) {
       // Handle fold line dragging
@@ -243,9 +251,7 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
     const canvas = canvasRef.current
     if (!canvas) return
 
-    const rect = canvas.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
+    const { x, y } = getCanvasCoordinates(e.clientX, e.clientY)
 
     const sheetX = 20 + panOffset.x
     const sheetY = 20 + panOffset.y
@@ -272,6 +278,88 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
     setScale(newScale)
   }
 
+  // Touch event handlers for mobile
+  const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (e.touches.length !== 1) return
+
+    const touch = e.touches[0]
+    const { x, y } = getCanvasCoordinates(touch.clientX, touch.clientY)
+
+    const sheetX = 20 + panOffset.x
+    const sheetY = 20 + panOffset.y
+    const sheetWidth = width * scale
+    const sheetHeight = length * scale
+
+    // Check if touch is on a fold line first
+    let touchedFoldLine = false
+    for (const line of foldLines) {
+      const lineY = sheetY + line.position * scale
+      // Make touch target area larger on mobile
+      if (Math.abs(y - lineY) < 20 && x >= sheetX && x <= sheetX + sheetWidth) {
+        setDragging(line.id)
+        touchedFoldLine = true
+        break
+      }
+    }
+
+    // Check if touch is on a direction indicator
+    if (!touchedFoldLine) {
+      for (const line of foldLines) {
+        const indicatorX = sheetX + 20
+        const indicatorY = sheetY + line.position * scale
+        const distance = Math.sqrt((x - indicatorX) ** 2 + (y - indicatorY) ** 2)
+
+        // Larger touch target for mobile
+        if (distance <= 20) {
+          const newDirection = line.direction === "up" ? "down" : "up"
+          updateFoldLine(line.id, line.position, newDirection)
+          touchedFoldLine = true
+          break
+        }
+      }
+    }
+
+    // If not touching a fold line or indicator, start panning
+    if (!touchedFoldLine) {
+      setPanning(true)
+      setLastPanPoint({ x, y })
+    }
+  }
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (e.touches.length !== 1) return
+
+    const touch = e.touches[0]
+    const { x, y } = getCanvasCoordinates(touch.clientX, touch.clientY)
+
+    if (dragging) {
+      // Handle fold line dragging
+      const sheetY = 20 + panOffset.y
+      const newPosition = Math.max(0, Math.min(length, Math.round((y - sheetY) / scale)))
+
+      const foldLine = foldLines.find((line) => line.id === dragging)
+      if (foldLine) {
+        updateFoldLine(dragging, newPosition, foldLine.direction)
+      }
+    } else if (panning) {
+      // Handle panning
+      const deltaX = x - lastPanPoint.x
+      const deltaY = y - lastPanPoint.y
+
+      setPanOffset((prev) => ({
+        x: prev.x + deltaX,
+        y: prev.y + deltaY,
+      }))
+
+      setLastPanPoint({ x, y })
+    }
+  }
+
+  const handleTouchEnd = () => {
+    setDragging(null)
+    setPanning(false)
+  }
+
   if (!mounted) {
     return <div>Loading canvas...</div>
   }
@@ -292,6 +380,9 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
         onMouseLeave={handleMouseUp}
         onClick={handleCanvasClick}
         onWheel={handleWheel}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
       />
     </div>
   )
