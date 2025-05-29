@@ -5,7 +5,6 @@ import type { FoldLine } from "@/components/sheet-metal-designer"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Trash } from "lucide-react"
 
 interface FoldLinesListProps {
@@ -70,24 +69,36 @@ export function FoldLinesList({ foldLines, sheetLength, onAdd, onUpdate, onRemov
 
               <div className="grid gap-2">
                 <Label>Bend Direction</Label>
-                <RadioGroup
-                  value={line.direction}
-                  onValueChange={(value) => onUpdate(line.id, line.position, value as "up" | "down")}
-                  className="flex gap-4"
-                >
+                <div className="flex gap-4">
                   <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="up" id={`direction-up-${line.id}`} />
+                    <input
+                      type="radio"
+                      id={`direction-up-${line.id}`}
+                      name={`direction-${line.id}`}
+                      value="up"
+                      checked={line.direction === "up"}
+                      onChange={() => onUpdate(line.id, line.position, "up")}
+                      className="h-4 w-4 text-primary border-gray-300 focus:ring-primary"
+                    />
                     <Label htmlFor={`direction-up-${line.id}`} className="cursor-pointer text-sm">
                       Up
                     </Label>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="down" id={`direction-down-${line.id}`} />
+                    <input
+                      type="radio"
+                      id={`direction-down-${line.id}`}
+                      name={`direction-${line.id}`}
+                      value="down"
+                      checked={line.direction === "down"}
+                      onChange={() => onUpdate(line.id, line.position, "down")}
+                      className="h-4 w-4 text-primary border-gray-300 focus:ring-primary"
+                    />
                     <Label htmlFor={`direction-down-${line.id}`} className="cursor-pointer text-sm">
                       Down
                     </Label>
                   </div>
-                </RadioGroup>
+                </div>
               </div>
             </div>
           ))}

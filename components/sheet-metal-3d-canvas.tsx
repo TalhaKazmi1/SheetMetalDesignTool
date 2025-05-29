@@ -24,6 +24,9 @@ export function SheetMetal3DCanvas({ width, length, foldLines }: SheetMetal3DCan
   const [panning, setPanning] = useState(false)
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 })
   const [lastPanPoint, setLastPanPoint] = useState({ x: 0, y: 0 })
+  const [touchStartTime, setTouchStartTime] = useState(0)
+  const [touchStartPos, setTouchStartPos] = useState({ x: 0, y: 0 })
+  const [isTouchDragging, setIsTouchDragging] = useState(false)
 
   useEffect(() => {
     setMounted(true)
@@ -277,7 +280,7 @@ export function SheetMetal3DCanvas({ width, length, foldLines }: SheetMetal3DCan
     ctx.fillStyle = "#6b7280"
     ctx.font = "10px Arial"
     ctx.textAlign = "left"
-    ctx.fillText("Drag to pan • Scroll to zoom ", 55, containerHeight - 10)
+    ctx.fillText("Drag to pan • Scroll to zoom • Controls to adjust", 10, containerHeight - 10)
   }, [calculateSegments, rotation, zoom, panOffset])
 
   // Animation loop
@@ -307,14 +310,24 @@ export function SheetMetal3DCanvas({ width, length, foldLines }: SheetMetal3DCan
     return "grab"
   }
 
+  // Convert page coordinates to canvas coordinates
+  const getCanvasCoordinates = (pageX: number, pageY: number) => {
+    const canvas = canvasRef.current
+    if (!canvas) return { x: 0, y: 0 }
+
+    const rect = canvas.getBoundingClientRect()
+    return {
+      x: pageX - rect.left,
+      y: pageY - rect.top,
+    }
+  }
+
   // Handle mouse events for panning
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
     if (!canvas) return
 
-    const rect = canvas.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
+    const { x, y } = getCanvasCoordinates(e.clientX, e.clientY)
 
     setPanning(true)
     setLastPanPoint({ x, y })
@@ -325,9 +338,7 @@ export function SheetMetal3DCanvas({ width, length, foldLines }: SheetMetal3DCan
     const canvas = canvasRef.current
     if (!canvas || !panning) return
 
-    const rect = canvas.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
+    const { x, y } = getCanvasCoordinates(e.clientX, e.clientY)
 
     const deltaX = x - lastPanPoint.x
     const deltaY = y - lastPanPoint.y
@@ -342,6 +353,58 @@ export function SheetMetal3DCanvas({ width, length, foldLines }: SheetMetal3DCan
 
   const handleMouseUp = () => {
     setPanning(false)
+  }
+
+  // Touch event handlers for mobile
+  const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (e.touches.length !== 1) return
+
+    const touch = e.touches[0]
+    const { x, y } = getCanvasCoordinates(touch.clientX, touch.clientY)
+
+    // Record touch start time and position for distinguishing between tap and drag
+    setTouchStartTime(Date.now())
+    setTouchStartPos({ x, y })
+    setIsTouchDragging(false)
+
+    setPanning(true)
+    setLastPanPoint({ x, y })
+    setAutoRotate(false) // Stop auto-rotation when user interacts
+  }
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (e.touches.length !== 1) return
+
+    const touch = e.touches[0]
+    const { x, y } = getCanvasCoordinates(touch.clientX, touch.clientY)
+
+    // Calculate distance moved from touch start
+    const dx = x - touchStartPos.x
+    const dy = y - touchStartPos.y
+    const distance = Math.sqrt(dx * dx + dy * dy)
+
+    // If moved more than threshold, consider it a drag
+    if (distance > 5) {
+      setIsTouchDragging(true)
+    }
+
+    if (panning) {
+      // Handle panning
+      const deltaX = x - lastPanPoint.x
+      const deltaY = y - lastPanPoint.y
+
+      setPanOffset((prev) => ({
+        x: prev.x + deltaX,
+        y: prev.y + deltaY,
+      }))
+
+      setLastPanPoint({ x, y })
+    }
+  }
+
+  const handleTouchEnd = () => {
+    setPanning(false)
+    setIsTouchDragging(false)
   }
 
   // Zoom controls
@@ -406,6 +469,9 @@ export function SheetMetal3DCanvas({ width, length, foldLines }: SheetMetal3DCan
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         onWheel={handleWheel}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
       />
     </div>
   )

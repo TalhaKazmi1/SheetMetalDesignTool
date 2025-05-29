@@ -21,6 +21,9 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 })
   const [lastPanPoint, setLastPanPoint] = useState({ x: 0, y: 0 })
   const [mounted, setMounted] = useState(false)
+  const [touchStartTime, setTouchStartTime] = useState(0)
+  const [touchStartPos, setTouchStartPos] = useState({ x: 0, y: 0 })
+  const [isTouchDragging, setIsTouchDragging] = useState(false)
 
   useEffect(() => {
     setMounted(true)
@@ -48,7 +51,7 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
         y: (containerHeight - scaledHeight) / 2,
       })
     }
-  }, [width, length, containerRef.current?.clientWidth, containerRef.current?.clientHeight])
+  }, [width, length])
 
   // Draw the sheet and fold lines on canvas
   const drawCanvas = useCallback(() => {
@@ -285,6 +288,11 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
     const touch = e.touches[0]
     const { x, y } = getCanvasCoordinates(touch.clientX, touch.clientY)
 
+    // Record touch start time and position for distinguishing between tap and drag
+    setTouchStartTime(Date.now())
+    setTouchStartPos({ x, y })
+    setIsTouchDragging(false)
+
     const sheetX = 20 + panOffset.x
     const sheetY = 20 + panOffset.y
     const sheetWidth = width * scale
@@ -295,31 +303,14 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
     for (const line of foldLines) {
       const lineY = sheetY + line.position * scale
       // Make touch target area larger on mobile
-      if (Math.abs(y - lineY) < 20 && x >= sheetX && x <= sheetX + sheetWidth) {
+      if (Math.abs(y - lineY) < 15 && x >= sheetX && x <= sheetX + sheetWidth) {
         setDragging(line.id)
         touchedFoldLine = true
         break
       }
     }
 
-    // Check if touch is on a direction indicator
-    if (!touchedFoldLine) {
-      for (const line of foldLines) {
-        const indicatorX = sheetX + 20
-        const indicatorY = sheetY + line.position * scale
-        const distance = Math.sqrt((x - indicatorX) ** 2 + (y - indicatorY) ** 2)
-
-        // Larger touch target for mobile
-        if (distance <= 20) {
-          const newDirection = line.direction === "up" ? "down" : "up"
-          updateFoldLine(line.id, line.position, newDirection)
-          touchedFoldLine = true
-          break
-        }
-      }
-    }
-
-    // If not touching a fold line or indicator, start panning
+    // If not touching a fold line, start panning
     if (!touchedFoldLine) {
       setPanning(true)
       setLastPanPoint({ x, y })
@@ -331,6 +322,16 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
 
     const touch = e.touches[0]
     const { x, y } = getCanvasCoordinates(touch.clientX, touch.clientY)
+
+    // Calculate distance moved from touch start
+    const dx = x - touchStartPos.x
+    const dy = y - touchStartPos.y
+    const distance = Math.sqrt(dx * dx + dy * dy)
+
+    // If moved more than threshold, consider it a drag
+    if (distance > 5) {
+      setIsTouchDragging(true)
+    }
 
     if (dragging) {
       // Handle fold line dragging
@@ -355,9 +356,39 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
     }
   }
 
-  const handleTouchEnd = () => {
+  const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    // If it was a short tap (not a drag) and not on a fold line
+    const touchDuration = Date.now() - touchStartTime
+
+    if (touchDuration < 300 && !isTouchDragging && !dragging) {
+      // Handle tap on direction indicator
+      const canvas = canvasRef.current
+      if (!canvas) return
+
+      const lastTouch = e.changedTouches[0]
+      const { x, y } = getCanvasCoordinates(lastTouch.clientX, lastTouch.clientY)
+
+      const sheetX = 20 + panOffset.x
+      const sheetY = 20 + panOffset.y
+
+      // Check if tap is on a direction indicator
+      for (const line of foldLines) {
+        const indicatorX = sheetX + 20
+        const indicatorY = sheetY + line.position * scale
+        const distance = Math.sqrt((x - indicatorX) ** 2 + (y - indicatorY) ** 2)
+
+        if (distance <= 20) {
+          // Larger touch target for mobile
+          const newDirection = line.direction === "up" ? "down" : "up"
+          updateFoldLine(line.id, line.position, newDirection)
+          break
+        }
+      }
+    }
+
     setDragging(null)
     setPanning(false)
+    setIsTouchDragging(false)
   }
 
   if (!mounted) {
@@ -365,11 +396,7 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="w-full h-full border border-gray-300 rounded-lg overflow-hidden"
-      style={{ minHeight: "300px" }}
-    >
+    <div ref={containerRef} className="w-full h-full border border-gray-300 rounded-lg overflow-hidden">
       <canvas
         ref={canvasRef}
         className="w-full h-full"

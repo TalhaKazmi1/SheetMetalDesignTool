@@ -43,7 +43,8 @@ const DEFAULT_DESIGN: SheetDesign = {
 export function SheetMetalDesigner() {
   const [design, setDesign] = useState<SheetDesign>({ ...DEFAULT_DESIGN })
   const [designName, setDesignName] = useState("New Design")
-  const canvasRef = useRef<HTMLDivElement>(null)
+  const sheetCanvasRef = useRef<HTMLDivElement>(null)
+  const previewCanvasRef = useRef<HTMLDivElement>(null)
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
@@ -134,18 +135,19 @@ export function SheetMetalDesigner() {
     setDesignName("New Design")
   }
 
+  // Export 3D preview as PNG
   const exportAsPng = async () => {
-    if (!canvasRef.current) return
+    if (!previewCanvasRef.current) return
 
     try {
-      const dataUrl = await toPng(canvasRef.current, {
+      const dataUrl = await toPng(previewCanvasRef.current, {
         backgroundColor: "#ffffff",
         pixelRatio: 2,
       })
-      saveAs(dataUrl, `${designName.replace(/\s+/g, "-")}.png`)
+      saveAs(dataUrl, `${designName.replace(/\s+/g, "-")}-3d.png`)
 
       toast.success("Export Successful", {
-        description: "Design exported as PNG.",
+        description: "3D Preview exported as PNG.",
       })
     } catch (error) {
       console.error("Export failed", error)
@@ -155,17 +157,18 @@ export function SheetMetalDesigner() {
     }
   }
 
+  // Export 3D preview as SVG
   const exportAsSvg = async () => {
-    if (!canvasRef.current) return
+    if (!previewCanvasRef.current) return
 
     try {
-      const dataUrl = await toSvg(canvasRef.current, {
+      const dataUrl = await toSvg(previewCanvasRef.current, {
         backgroundColor: "#ffffff",
       })
-      saveAs(dataUrl, `${designName.replace(/\s+/g, "-")}.svg`)
+      saveAs(dataUrl, `${designName.replace(/\s+/g, "-")}-3d.svg`)
 
       toast.success("Export Successful", {
-        description: "Design exported as SVG.",
+        description: "3D Preview exported as SVG.",
       })
     } catch (error) {
       console.error("Export failed", error)
@@ -175,6 +178,7 @@ export function SheetMetalDesigner() {
     }
   }
 
+  // Export as DXF (still using the 2D sheet data)
   const exportAsDxf = () => {
     try {
       const dxfContent = writeDxf(design)
@@ -279,9 +283,9 @@ export function SheetMetalDesigner() {
                 </div>
 
                 {/* Canvas Grid - Fixed Height */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-10 mb-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                   {/* 2D Sheet Canvas */}
-                  <div ref={canvasRef}>
+                  <div ref={sheetCanvasRef}>
                     <h3 className="text-sm font-medium mb-2">2D Sheet View</h3>
                     <div className="h-64 md:h-80">
                       <SheetCanvas
@@ -294,7 +298,7 @@ export function SheetMetalDesigner() {
                   </div>
 
                   {/* 3D Preview Canvas */}
-                  <div>
+                  <div ref={previewCanvasRef}>
                     <h3 className="text-sm font-medium mb-2">3D Preview</h3>
                     <div className="h-64 md:h-80">
                       <SheetMetal3DCanvas width={design.width} length={design.length} foldLines={design.foldLines} />
@@ -306,15 +310,15 @@ export function SheetMetalDesigner() {
                 <div className="flex flex-wrap gap-2">
                   <Button onClick={exportAsPng} size="sm">
                     <Download className="mr-2 h-4 w-4" />
-                    PNG
+                    Export 3D as PNG
                   </Button>
                   <Button onClick={exportAsSvg} variant="outline" size="sm">
                     <Download className="mr-2 h-4 w-4" />
-                    SVG
+                    Export 3D as SVG
                   </Button>
                   <Button onClick={exportAsDxf} variant="outline" size="sm">
                     <Download className="mr-2 h-4 w-4" />
-                    DXF
+                    Export as DXF
                   </Button>
                 </div>
               </CardContent>
