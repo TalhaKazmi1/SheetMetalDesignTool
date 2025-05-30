@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useRef, useEffect, useState, useCallback } from "react"
 import { ZoomIn, ZoomOut, RotateCcw } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -32,94 +31,6 @@ export function SheetMetal3DCanvas({ width, length, foldLines }: SheetMetal3DCan
     setMounted(true)
   }, [])
 
-  // Calculate sheet segments based on fold lines
-  const calculateSegments = useCallback(() => {
-    const sortedFoldLines = [...foldLines].sort((a, b) => a.position - b.position)
-    const segments: {
-      width: number
-      length: number
-      x: number
-      y: number
-      z: number
-      rotationX: number
-      color: string
-    }[] = []
-
-    // Dynamic scaling based on sheet size and number of folds
-    const maxDimension = Math.max(width, length)
-    const baseFactor = 120 / maxDimension // Base scale to fit in canvas
-    const foldFactor = Math.max(0.3, 1 - foldLines.length * 0.1) // Reduce scale with more folds
-    const scaleFactor = baseFactor * foldFactor
-
-    if (sortedFoldLines.length === 0) {
-      segments.push({
-        width: width * scaleFactor,
-        length: length * scaleFactor,
-        x: 0,
-        y: 0,
-        z: 0,
-        rotationX: 0,
-        color: "#88ccff",
-      })
-    } else {
-      let lastPosition = 0
-      let currentY = -(length * scaleFactor) / 2 // Start from top
-      let currentZ = 0
-      let currentRotationX = 0
-
-      // First segment
-      const firstSegmentLength = sortedFoldLines[0].position - lastPosition
-      const firstSegmentScaled = firstSegmentLength * scaleFactor
-
-      segments.push({
-        width: width * scaleFactor,
-        length: firstSegmentScaled,
-        x: 0,
-        y: currentY + firstSegmentScaled / 2,
-        z: currentZ,
-        rotationX: 0,
-        color: `hsl(210, 70%, 60%)`,
-      })
-
-      currentY += firstSegmentScaled
-      lastPosition = sortedFoldLines[0].position
-
-      // Subsequent segments
-      for (let i = 0; i < sortedFoldLines.length; i++) {
-        const foldLine = sortedFoldLines[i]
-        const nextPosition = i < sortedFoldLines.length - 1 ? sortedFoldLines[i + 1].position : length
-        const segmentLength = nextPosition - foldLine.position
-        const segmentScaled = segmentLength * scaleFactor
-
-        // Apply fold angle (smaller angles for better visibility)
-        const foldAngle = foldLine.direction === "up" ? Math.PI / 6 : -Math.PI / 6
-        currentRotationX += foldAngle
-
-        // Calculate new position
-        const halfSegmentLength = segmentScaled / 2
-        const offsetY = Math.cos(currentRotationX) * halfSegmentLength
-        const offsetZ = Math.sin(currentRotationX) * halfSegmentLength
-
-        segments.push({
-          width: width * scaleFactor,
-          length: segmentScaled,
-          x: 0,
-          y: currentY + offsetY,
-          z: currentZ + offsetZ,
-          rotationX: currentRotationX,
-          color: `hsl(${210 + i * 20}, 70%, ${60 + i * 5}%)`,
-        })
-
-        // Update position for next segment
-        currentY += Math.cos(currentRotationX) * segmentScaled
-        currentZ += Math.sin(currentRotationX) * segmentScaled
-        lastPosition = nextPosition
-      }
-    }
-
-    return segments
-  }, [width, length, foldLines])
-
   // Convert 3D coordinates to 2D isometric projection
   const project3DTo2D = (x: number, y: number, z: number, rotationY: number) => {
     // Apply Y rotation
@@ -135,76 +46,180 @@ export function SheetMetal3DCanvas({ width, length, foldLines }: SheetMetal3DCan
     return { x: isoX, y: isoY }
   }
 
-  // Draw a 3D rectangle (sheet segment) in isometric view
-  const drawIsometricRect = (
-    ctx: CanvasRenderingContext2D,
-    x: number,
-    y: number,
-    z: number,
-    width: number,
-    length: number,
-    rotationX: number,
-    rotationY: number,
-    color: string,
-    centerX: number,
-    centerY: number,
-  ) => {
-    // Calculate the four corners of the rectangle
-    const halfWidth = width / 2
-    const halfLength = length / 2
+  // Create a grid of points representing the sheet
+  const createSheetGrid = useCallback(() => {
+    const gridSize = 10 // Number of grid points in each dimension
+    const points = []
 
-    // Apply rotation around X axis
-    const corners = [
-      { x: -halfWidth, y: -halfLength, z: 0 },
-      { x: halfWidth, y: -halfLength, z: 0 },
-      { x: halfWidth, y: halfLength, z: 0 },
-      { x: -halfWidth, y: halfLength, z: 0 },
-    ]
+    // Dynamic scaling based on sheet size
+    const maxDimension = Math.max(width, length)
+    const baseFactor = 120 / maxDimension
+    const scaleFactor = baseFactor * 0.8
 
-    // Apply X rotation to corners
-    const rotatedCorners = corners.map((corner) => ({
-      x: corner.x,
-      y: corner.y * Math.cos(rotationX) - corner.z * Math.sin(rotationX),
-      z: corner.y * Math.sin(rotationX) + corner.z * Math.cos(rotationX),
-    }))
+    const sheetWidth = width * scaleFactor
+    const sheetLength = length * scaleFactor
 
-    // Translate to segment position
-    const translatedCorners = rotatedCorners.map((corner) => ({
-      x: corner.x + x,
-      y: corner.y + y,
-      z: corner.z + z,
-    }))
+    // Create a grid of points
+    for (let y = 0; y <= gridSize; y++) {
+      for (let x = 0; x <= gridSize; x++) {
+        // Calculate position in sheet coordinates
+        const xPos = (x / gridSize) * width
+        const yPos = (y / gridSize) * length
 
-    // Project to 2D
-    const projectedCorners = translatedCorners.map((corner) => project3DTo2D(corner.x, corner.y, corner.z, rotationY))
+        // Convert to 3D space coordinates
+        const xCoord = (xPos / width - 0.5) * sheetWidth
+        const yCoord = (yPos / length - 0.5) * sheetLength
 
-    // Apply zoom and pan offset
-    const zoomedCorners = projectedCorners.map((corner) => ({
-      x: centerX + corner.x * zoom + panOffset.x,
-      y: centerY - corner.y * zoom + panOffset.y,
-    }))
+        // Start with flat sheet
+        let zCoord = 0
+        const color = "#88ccff"
 
-    // Draw the rectangle
-    ctx.fillStyle = color
-    ctx.strokeStyle = "#333333"
-    ctx.lineWidth = 1
+        // Apply all fold effects to this point
+        foldLines.forEach((foldLine) => {
+          // Calculate distance from point to fold line
+          const foldStartX = (foldLine.startPoint.x / width) * sheetWidth - sheetWidth / 2
+          const foldStartY = (foldLine.startPoint.y / length) * sheetLength - sheetLength / 2
+          const foldEndX = (foldLine.endPoint.x / width) * sheetWidth - sheetWidth / 2
+          const foldEndY = (foldLine.endPoint.y / length) * sheetLength - sheetLength / 2
 
-    ctx.beginPath()
-    zoomedCorners.forEach((corner, index) => {
-      if (index === 0) {
-        ctx.moveTo(corner.x, corner.y)
-      } else {
-        ctx.lineTo(corner.x, corner.y)
+          // Calculate fold line vector
+          const foldVectorX = foldEndX - foldStartX
+          const foldVectorY = foldEndY - foldStartY
+          const foldLength = Math.sqrt(foldVectorX * foldVectorX + foldVectorY * foldVectorY)
+
+          if (foldLength > 0) {
+            // Normalize fold vector
+            const foldDirX = foldVectorX / foldLength
+            const foldDirY = foldVectorY / foldLength
+
+            // Calculate perpendicular vector
+            const perpX = -foldDirY
+            const perpY = foldDirX
+
+            // Calculate point relative to fold line
+            const relX = xCoord - foldStartX
+            const relY = yCoord - foldStartY
+
+            // Project point onto fold line
+            const projDist = relX * foldDirX + relY * foldDirY
+
+            // Calculate perpendicular distance
+            const perpDist = relX * perpX + relY * perpY
+
+            // Check if point is within fold line segment
+            if (projDist >= 0 && projDist <= foldLength) {
+              // Apply fold effect based on perpendicular distance
+              const foldDirection = foldLine.direction === "up" ? 1 : -1
+              const foldAngle = Math.PI / 6 // 30 degrees
+
+              // Only apply fold to one side of the line
+              if (perpDist > 0) {
+                // Calculate fold effect
+                const foldEffect = Math.min(Math.abs(perpDist), sheetLength / 2) * Math.sin(foldAngle) * foldDirection
+                zCoord += foldEffect
+
+                // Remove this color change line:
+                // const colorShift = Math.abs(foldEffect) * 20
+                // color = `hsl(${210 + colorShift}, 70%, ${60 - colorShift / 2}%)`
+              }
+            }
+          }
+        })
+
+        points.push({ x: xCoord, y: yCoord, z: zCoord, color })
       }
-    })
-    ctx.closePath()
-    ctx.fill()
-    ctx.stroke()
+    }
 
-    // Add some shading for 3D effect
-    ctx.fillStyle = "rgba(0, 0, 0, 0.1)"
-    ctx.fill()
-  }
+    return { points, gridSize, sheetWidth, sheetLength }
+  }, [width, length, foldLines])
+
+  // Draw the sheet with folds
+  const drawSheet = useCallback(
+    (ctx: CanvasRenderingContext2D, centerX: number, centerY: number) => {
+      const { points, gridSize, sheetWidth, sheetLength } = createSheetGrid()
+
+      // Draw grid cells
+      for (let y = 0; y < gridSize; y++) {
+        for (let x = 0; x < gridSize; x++) {
+          // Get the four corners of this grid cell
+          const idx1 = y * (gridSize + 1) + x
+          const idx2 = y * (gridSize + 1) + (x + 1)
+          const idx3 = (y + 1) * (gridSize + 1) + (x + 1)
+          const idx4 = (y + 1) * (gridSize + 1) + x
+
+          const p1 = points[idx1]
+          const p2 = points[idx2]
+          const p3 = points[idx3]
+          const p4 = points[idx4]
+
+          // Project to 2D
+          const proj1 = project3DTo2D(p1.x, p1.y, p1.z, rotation)
+          const proj2 = project3DTo2D(p2.x, p2.y, p2.z, rotation)
+          const proj3 = project3DTo2D(p3.x, p3.y, p3.z, rotation)
+          const proj4 = project3DTo2D(p4.x, p4.y, p4.z, rotation)
+
+          // Apply zoom and pan
+          const screen1 = { x: centerX + proj1.x * zoom + panOffset.x, y: centerY - proj1.y * zoom + panOffset.y }
+          const screen2 = { x: centerX + proj2.x * zoom + panOffset.x, y: centerY - proj2.y * zoom + panOffset.y }
+          const screen3 = { x: centerX + proj3.x * zoom + panOffset.x, y: centerY - proj3.y * zoom + panOffset.y }
+          const screen4 = { x: centerX + proj4.x * zoom + panOffset.x, y: centerY - proj4.y * zoom + panOffset.y }
+
+          // Calculate average color - use consistent color instead
+          // const avgZ = (p1.z + p2.z + p3.z + p4.z) / 4
+          // const colorShift = Math.abs(avgZ) * 20
+          // const color = `hsl(${210 + colorShift}, 70%, ${60 - colorShift / 2}%)`
+          const color = "#88ccff"
+
+          // Draw the grid cell
+          ctx.fillStyle = color
+          ctx.strokeStyle = "#333333"
+          ctx.lineWidth = 0.5
+
+          ctx.beginPath()
+          ctx.moveTo(screen1.x, screen1.y)
+          ctx.lineTo(screen2.x, screen2.y)
+          ctx.lineTo(screen3.x, screen3.y)
+          ctx.lineTo(screen4.x, screen4.y)
+          ctx.closePath()
+          ctx.fill()
+          ctx.stroke()
+        }
+      }
+
+      // Draw fold lines
+      foldLines.forEach((foldLine) => {
+        // Convert fold line to 3D coordinates
+        const foldStartX = (foldLine.startPoint.x / width) * sheetWidth - sheetWidth / 2
+        const foldStartY = (foldLine.startPoint.y / length) * sheetLength - sheetLength / 2
+        const foldEndX = (foldLine.endPoint.x / width) * sheetWidth - sheetWidth / 2
+        const foldEndY = (foldLine.endPoint.y / length) * sheetLength - sheetLength / 2
+
+        // Find z-coordinates at fold line points
+        const startZ = 0
+        const endZ = 0
+
+        // Project to 2D
+        const projStart = project3DTo2D(foldStartX, foldStartY, startZ, rotation)
+        const projEnd = project3DTo2D(foldEndX, foldEndY, endZ, rotation)
+
+        // Apply zoom and pan
+        const screenStart = {
+          x: centerX + projStart.x * zoom + panOffset.x,
+          y: centerY - projStart.y * zoom + panOffset.y,
+        }
+        const screenEnd = { x: centerX + projEnd.x * zoom + panOffset.x, y: centerY - projEnd.y * zoom + panOffset.y }
+
+        // Draw fold line
+        ctx.strokeStyle = "#333333"
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.moveTo(screenStart.x, screenStart.y)
+        ctx.lineTo(screenEnd.x, screenEnd.y)
+        ctx.stroke()
+      })
+    },
+    [createSheetGrid, rotation, zoom, panOffset],
+  )
 
   // Main drawing function
   const drawCanvas = useCallback(() => {
@@ -215,26 +230,20 @@ export function SheetMetal3DCanvas({ width, length, foldLines }: SheetMetal3DCan
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
-    // Set canvas size to match container
     const containerWidth = container.clientWidth
     const containerHeight = container.clientHeight
     canvas.width = containerWidth
     canvas.height = containerHeight
 
-    // Clear canvas
     ctx.clearRect(0, 0, containerWidth, containerHeight)
 
-    // Set background
     ctx.fillStyle = "#f8fafc"
     ctx.fillRect(0, 0, containerWidth, containerHeight)
 
     const centerX = containerWidth / 2
     const centerY = containerHeight / 2
 
-    // Calculate segments
-    const segments = calculateSegments()
-
-    // Draw grid for reference
+    // Draw grid
     ctx.strokeStyle = "rgba(0, 0, 0, 0.1)"
     ctx.lineWidth = 1
     for (let i = 0; i < containerWidth; i += 20) {
@@ -250,22 +259,8 @@ export function SheetMetal3DCanvas({ width, length, foldLines }: SheetMetal3DCan
       ctx.stroke()
     }
 
-    // Draw segments
-    segments.forEach((segment) => {
-      drawIsometricRect(
-        ctx,
-        segment.x,
-        segment.y,
-        segment.z,
-        segment.width,
-        segment.length,
-        segment.rotationX,
-        rotation,
-        segment.color,
-        centerX,
-        centerY,
-      )
-    })
+    // Draw the sheet
+    drawSheet(ctx, centerX, centerY)
 
     // Draw title and info
     ctx.fillStyle = "#374151"
@@ -276,12 +271,11 @@ export function SheetMetal3DCanvas({ width, length, foldLines }: SheetMetal3DCan
     ctx.font = "10px Arial"
     ctx.fillText(`Zoom: ${Math.round(zoom * 100)}%`, centerX, containerHeight - 30)
 
-    // Draw pan instructions
     ctx.fillStyle = "#6b7280"
     ctx.font = "10px Arial"
     ctx.textAlign = "left"
     ctx.fillText("Drag to pan • Scroll to zoom • Controls to adjust", 10, containerHeight - 10)
-  }, [calculateSegments, rotation, zoom, panOffset])
+  }, [drawSheet, zoom, panOffset])
 
   // Animation loop
   useEffect(() => {
@@ -304,13 +298,12 @@ export function SheetMetal3DCanvas({ width, length, foldLines }: SheetMetal3DCan
     }
   }, [drawCanvas, mounted, autoRotate])
 
-  // Get cursor style based on interaction state
+  // All event handlers remain the same...
   const getCursorStyle = () => {
     if (panning) return "grabbing"
     return "grab"
   }
 
-  // Convert page coordinates to canvas coordinates
   const getCanvasCoordinates = (pageX: number, pageY: number) => {
     const canvas = canvasRef.current
     if (!canvas) return { x: 0, y: 0 }
@@ -322,7 +315,6 @@ export function SheetMetal3DCanvas({ width, length, foldLines }: SheetMetal3DCan
     }
   }
 
-  // Handle mouse events for panning
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -331,7 +323,7 @@ export function SheetMetal3DCanvas({ width, length, foldLines }: SheetMetal3DCan
 
     setPanning(true)
     setLastPanPoint({ x, y })
-    // setAutoRotate(false) // Stop auto-rotation when user interacts
+    // setAutoRotate(false)
   }
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -355,41 +347,42 @@ export function SheetMetal3DCanvas({ width, length, foldLines }: SheetMetal3DCan
     setPanning(false)
   }
 
-  // Touch event handlers for mobile
   const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+
     if (e.touches.length !== 1) return
 
     const touch = e.touches[0]
     const { x, y } = getCanvasCoordinates(touch.clientX, touch.clientY)
 
-    // Record touch start time and position for distinguishing between tap and drag
     setTouchStartTime(Date.now())
     setTouchStartPos({ x, y })
     setIsTouchDragging(false)
 
     setPanning(true)
     setLastPanPoint({ x, y })
-    // setAutoRotate(false) // Stop auto-rotation when user interacts
+    // setAutoRotate(false)
   }
 
   const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+
     if (e.touches.length !== 1) return
 
     const touch = e.touches[0]
     const { x, y } = getCanvasCoordinates(touch.clientX, touch.clientY)
 
-    // Calculate distance moved from touch start
     const dx = x - touchStartPos.x
     const dy = y - touchStartPos.y
     const distance = Math.sqrt(dx * dx + dy * dy)
 
-    // If moved more than threshold, consider it a drag
     if (distance > 5) {
       setIsTouchDragging(true)
     }
 
     if (panning) {
-      // Handle panning
       const deltaX = x - lastPanPoint.x
       const deltaY = y - lastPanPoint.y
 
@@ -402,12 +395,14 @@ export function SheetMetal3DCanvas({ width, length, foldLines }: SheetMetal3DCan
     }
   }
 
-  const handleTouchEnd = () => {
+  const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+
     setPanning(false)
     setIsTouchDragging(false)
   }
 
-  // Zoom controls
   const zoomIn = () => setZoom((prev) => Math.min(prev + 0.2, 3))
   const zoomOut = () => setZoom((prev) => Math.max(prev - 0.2, 0.3))
   const resetView = () => {
@@ -416,9 +411,7 @@ export function SheetMetal3DCanvas({ width, length, foldLines }: SheetMetal3DCan
     setPanOffset({ x: 0, y: 0 })
     setAutoRotate(true)
   }
-  const toggleAutoRotate = () => setAutoRotate((prev) => !prev)
 
-  // Mouse wheel zoom
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault()
     const delta = e.deltaY > 0 ? -0.1 : 0.1
@@ -435,7 +428,6 @@ export function SheetMetal3DCanvas({ width, length, foldLines }: SheetMetal3DCan
 
   return (
     <div ref={containerRef} className="relative w-full h-full">
-      {/* Controls */}
       <div className="absolute top-2 right-2 z-10 flex flex-col gap-1">
         <Button variant="outline" size="sm" onClick={zoomIn} className="h-6 w-6 p-0">
           <ZoomIn className="h-3 w-3" />
@@ -448,12 +440,11 @@ export function SheetMetal3DCanvas({ width, length, foldLines }: SheetMetal3DCan
         </Button>
       </div>
 
-      {/* Auto-rotate toggle */}
       {/* <div className="absolute bottom-2 left-2 z-10">
         <Button
           variant={autoRotate ? "default" : "outline"}
           size="sm"
-          onClick={toggleAutoRotate}
+          onClick={() => setAutoRotate(!autoRotate)}
           className="text-xs h-6"
         >
           {autoRotate ? "Auto" : "Manual"}
@@ -463,7 +454,7 @@ export function SheetMetal3DCanvas({ width, length, foldLines }: SheetMetal3DCan
       <canvas
         ref={canvasRef}
         className="w-full h-full border border-gray-300 rounded-lg"
-        style={{ cursor: getCursorStyle() }}
+        style={{ cursor: getCursorStyle(), touchAction: "none" }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}

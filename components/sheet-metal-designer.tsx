@@ -20,7 +20,8 @@ import { FoldLinesList } from "./fold-line-list"
 
 export interface FoldLine {
   id: string
-  position: number
+  startPoint: { x: number; y: number } // Start point of the fold line
+  endPoint: { x: number; y: number } // End point of the fold line
   direction: "up" | "down"
 }
 
@@ -74,10 +75,11 @@ export function SheetMetalDesigner() {
   }
 
   const addFoldLine = () => {
-    const newPosition = Math.round(design.length / 2)
+    // Create a fold line across the middle of the sheet
     const newFoldLine: FoldLine = {
       id: `fold-${Math.random().toString(36).substring(2, 9)}`,
-      position: newPosition,
+      startPoint: { x: 0, y: Math.round(design.length / 2) },
+      endPoint: { x: design.width, y: Math.round(design.length / 2) },
       direction: "up",
     }
     setDesign((prev) => ({
@@ -86,10 +88,24 @@ export function SheetMetalDesigner() {
     }))
   }
 
-  const updateFoldLine = (id: string, position: number, direction: "up" | "down") => {
+  const updateFoldLine = (
+    id: string,
+    startPoint?: { x: number; y: number },
+    endPoint?: { x: number; y: number },
+    direction?: "up" | "down",
+  ) => {
     setDesign((prev) => ({
       ...prev,
-      foldLines: prev.foldLines.map((line) => (line.id === id ? { ...line, position, direction } : line)),
+      foldLines: prev.foldLines.map((line) =>
+        line.id === id
+          ? {
+              ...line,
+              startPoint: startPoint || line.startPoint,
+              endPoint: endPoint || line.endPoint,
+              direction: direction || line.direction,
+            }
+          : line,
+      ),
     }))
   }
 
@@ -245,6 +261,7 @@ export function SheetMetalDesigner() {
                   <CardContent className="pt-6">
                     <FoldLinesList
                       foldLines={design.foldLines}
+                      sheetWidth={design.width}
                       sheetLength={design.length}
                       onAdd={addFoldLine}
                       onUpdate={updateFoldLine}
