@@ -488,7 +488,7 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
         className="w-full h-full"
         style={{
           cursor: getCursorStyle(),
-          touchAction: dragging ? "none" : "auto",
+          touchAction: "none",
         }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
