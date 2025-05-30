@@ -33,16 +33,37 @@ export interface SheetDesign {
   foldLines: FoldLine[]
 }
 
-const DEFAULT_DESIGN: SheetDesign = {
-  id: "default",
-  name: "New Design",
-  width: 300,
-  length: 200,
-  foldLines: [],
+// Hook to detect mobile screen
+const useIsMobile = () => {
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const checkIsMobile = () => {
+      setIsMobile(window.innerWidth < 768) // md breakpoint
+    }
+
+    checkIsMobile()
+    window.addEventListener("resize", checkIsMobile)
+
+    return () => window.removeEventListener("resize", checkIsMobile)
+  }, [])
+
+  return isMobile
 }
 
 export function SheetMetalDesigner() {
-  const [design, setDesign] = useState<SheetDesign>({ ...DEFAULT_DESIGN })
+  const isMobile = useIsMobile()
+
+  // Create responsive default design
+  const getDefaultDesign = (): SheetDesign => ({
+    id: "default",
+    name: "New Design",
+    width: isMobile ? 100 : 300,
+    length: isMobile ? 100 : 200,
+    foldLines: [],
+  })
+
+  const [design, setDesign] = useState<SheetDesign>(getDefaultDesign())
   const [designName, setDesignName] = useState("New Design")
   const sheetCanvasRef = useRef<HTMLDivElement>(null)
   const previewCanvasRef = useRef<HTMLDivElement>(null)
@@ -62,6 +83,13 @@ export function SheetMetalDesigner() {
       }
     }
   }, [])
+
+  // Update design dimensions when screen size changes (only for new designs)
+  useEffect(() => {
+    if (mounted && design.id === "default") {
+      setDesign(getDefaultDesign())
+    }
+  }, [isMobile, mounted])
 
   if (!mounted) {
     return <div className="p-4 text-center">Loading designer...</div>
@@ -147,7 +175,8 @@ export function SheetMetalDesigner() {
   }
 
   const newDesign = () => {
-    setDesign({ ...DEFAULT_DESIGN, id: `design-${Math.random().toString(36).substring(2, 9)}` })
+    const defaultDesign = getDefaultDesign()
+    setDesign({ ...defaultDesign, id: `design-${Math.random().toString(36).substring(2, 9)}` })
     setDesignName("New Design")
   }
 
@@ -253,6 +282,7 @@ export function SheetMetalDesigner() {
                     <Button onClick={newDesign} variant="outline" className="w-full">
                       Create New Design
                     </Button>
+                    {isMobile && <p className="text-xs text-gray-500 text-center">Mobile: Default 50×50mm</p>}
                   </CardContent>
                 </Card>
               </TabsContent>

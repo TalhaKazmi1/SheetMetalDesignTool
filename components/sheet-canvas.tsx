@@ -93,6 +93,15 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
     ctx.fillRect(sheetX, sheetY, sheetWidth, sheetHeight)
     ctx.strokeRect(sheetX, sheetY, sheetWidth, sheetHeight)
 
+    // Highlight sheet border when dragging
+    if (dragging) {
+      ctx.strokeStyle = "#3b82f6"
+      ctx.lineWidth = 3
+      ctx.setLineDash([5, 5])
+      ctx.strokeRect(sheetX, sheetY, sheetWidth, sheetHeight)
+      ctx.setLineDash([])
+    }
+
     // Draw dimensions labels
     ctx.fillStyle = "#374151"
     ctx.font = "12px Arial"
@@ -222,7 +231,7 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
     }
   }
 
-  // Convert canvas coordinates to sheet coordinates
+  // Convert canvas coordinates to sheet coordinates with border constraint
   const canvasToSheetCoordinates = (canvasX: number, canvasY: number) => {
     const sheetX = 20 + panOffset.x
     const sheetY = 20 + panOffset.y
@@ -232,9 +241,45 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
     const relativeX = (canvasX - sheetX) / sheetWidth
     const relativeY = (canvasY - sheetY) / sheetHeight
 
+    // Convert to sheet coordinates
+    const x = relativeX * width
+    const y = relativeY * length
+
+    // BORDER CONSTRAINT: Snap to nearest edge
+    // Calculate distances to each edge
+    const distToLeft = Math.abs(x - 0)
+    const distToRight = Math.abs(x - width)
+    const distToTop = Math.abs(y - 0)
+    const distToBottom = Math.abs(y - length)
+
+    // Find the minimum distance to any edge
+    const minDist = Math.min(distToLeft, distToRight, distToTop, distToBottom)
+
+    let constrainedX = x
+    let constrainedY = y
+
+    // Snap to the nearest edge
+    if (minDist === distToLeft) {
+      // Snap to left edge
+      constrainedX = 0
+      constrainedY = Math.max(0, Math.min(length, y))
+    } else if (minDist === distToRight) {
+      // Snap to right edge
+      constrainedX = width
+      constrainedY = Math.max(0, Math.min(length, y))
+    } else if (minDist === distToTop) {
+      // Snap to top edge
+      constrainedX = Math.max(0, Math.min(width, x))
+      constrainedY = 0
+    } else if (minDist === distToBottom) {
+      // Snap to bottom edge
+      constrainedX = Math.max(0, Math.min(width, x))
+      constrainedY = length
+    }
+
     return {
-      x: Math.max(0, Math.min(width, Math.round(relativeX * width))),
-      y: Math.max(0, Math.min(length, Math.round(relativeY * length))),
+      x: Math.round(constrainedX),
+      y: Math.round(constrainedY),
     }
   }
 
@@ -292,7 +337,7 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
     const { x, y } = getCanvasCoordinates(e.clientX, e.clientY)
 
     if (dragging) {
-      // Handle fold line point dragging
+      // Handle fold line point dragging with border constraint
       const sheetCoords = canvasToSheetCoordinates(x, y)
 
       if (dragging.point === "start") {
@@ -407,6 +452,7 @@ export function SheetCanvas({ width, length, foldLines, updateFoldLine }: SheetC
       e.preventDefault()
       e.stopPropagation()
 
+      // Handle fold line point dragging with border constraint
       const sheetCoords = canvasToSheetCoordinates(x, y)
 
       if (dragging.point === "start") {

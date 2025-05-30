@@ -46,10 +46,9 @@ export function SheetMetal3DCanvas({ width, length, foldLines }: SheetMetal3DCan
     return { x: isoX, y: isoY }
   }
 
-  // Create a grid of points representing the sheet
-  const createSheetGrid = useCallback(() => {
-    const gridSize = 10 // Number of grid points in each dimension
-    const points = []
+  // Create flat segments separated by fold lines
+  const createSheetSegments = useCallback(() => {
+    const segments = []
 
     // Dynamic scaling based on sheet size
     const maxDimension = Math.max(width, length)
@@ -59,134 +58,161 @@ export function SheetMetal3DCanvas({ width, length, foldLines }: SheetMetal3DCan
     const sheetWidth = width * scaleFactor
     const sheetLength = length * scaleFactor
 
-    // Create a grid of points
-    for (let y = 0; y <= gridSize; y++) {
-      for (let x = 0; x <= gridSize; x++) {
-        // Calculate position in sheet coordinates
-        const xPos = (x / gridSize) * width
-        const yPos = (y / gridSize) * length
+    if (foldLines.length === 0) {
+      // No fold lines - single flat sheet
+      segments.push({
+        vertices: [
+          { x: -sheetWidth / 2, y: -sheetLength / 2, z: 0 },
+          { x: sheetWidth / 2, y: -sheetLength / 2, z: 0 },
+          { x: sheetWidth / 2, y: sheetLength / 2, z: 0 },
+          { x: -sheetWidth / 2, y: sheetLength / 2, z: 0 },
+        ],
+        color: "#88ccff",
+      })
+    } else {
+      // For each fold line, create two segments
+      foldLines.forEach((foldLine, index) => {
+        // Convert fold line to 3D coordinates
+        const foldStartX = (foldLine.startPoint.x / width) * sheetWidth - sheetWidth / 2
+        const foldStartY = (foldLine.startPoint.y / length) * sheetLength - sheetLength / 2
+        const foldEndX = (foldLine.endPoint.x / width) * sheetWidth - sheetWidth / 2
+        const foldEndY = (foldLine.endPoint.y / length) * sheetLength - sheetLength / 2
 
-        // Convert to 3D space coordinates
-        const xCoord = (xPos / width - 0.5) * sheetWidth
-        const yCoord = (yPos / length - 0.5) * sheetLength
+        // Create the base segment (always flat)
+        const baseSegment = {
+          vertices: [
+            { x: -sheetWidth / 2, y: -sheetLength / 2, z: 0 },
+            { x: sheetWidth / 2, y: -sheetLength / 2, z: 0 },
+            { x: foldEndX, y: foldEndY, z: 0 },
+            { x: foldStartX, y: foldStartY, z: 0 },
+          ],
+          color: "#88ccff",
+        }
 
-        // Start with flat sheet
-        let zCoord = 0
-        const color = "#88ccff"
+        // Create the folded segment
+        const foldAngle = foldLine.direction === "up" ? Math.PI / 6 : -Math.PI / 6
 
-        // Apply all fold effects to this point
-        foldLines.forEach((foldLine) => {
-          // Calculate distance from point to fold line
-          const foldStartX = (foldLine.startPoint.x / width) * sheetWidth - sheetWidth / 2
-          const foldStartY = (foldLine.startPoint.y / length) * sheetLength - sheetLength / 2
-          const foldEndX = (foldLine.endPoint.x / width) * sheetWidth - sheetWidth / 2
-          const foldEndY = (foldLine.endPoint.y / length) * sheetLength - sheetLength / 2
+        // Calculate fold line vector for rotation axis
+        const foldVectorX = foldEndX - foldStartX
+        const foldVectorY = foldEndY - foldStartY
+        const foldLength = Math.sqrt(foldVectorX * foldVectorX + foldVectorY * foldVectorY)
 
-          // Calculate fold line vector
-          const foldVectorX = foldEndX - foldStartX
-          const foldVectorY = foldEndY - foldStartY
-          const foldLength = Math.sqrt(foldVectorX * foldVectorX + foldVectorY * foldVectorY)
+        if (foldLength > 0) {
+          // Normalize fold vector
+          const foldDirX = foldVectorX / foldLength
+          const foldDirY = foldVectorY / foldLength
 
-          if (foldLength > 0) {
-            // Normalize fold vector
-            const foldDirX = foldVectorX / foldLength
-            const foldDirY = foldVectorY / foldLength
+          // Create the second segment vertices
+          const segment2Vertices = [
+            { x: foldStartX, y: foldStartY, z: 0 },
+            { x: foldEndX, y: foldEndY, z: 0 },
+            { x: sheetWidth / 2, y: sheetLength / 2, z: 0 },
+            { x: -sheetWidth / 2, y: sheetLength / 2, z: 0 },
+          ]
 
-            // Calculate perpendicular vector
-            const perpX = -foldDirY
-            const perpY = foldDirX
+          // Apply rotation to the second segment around the fold line
+          const rotatedVertices = segment2Vertices.map((vertex) => {
+            // Translate to fold line start
+            const relX = vertex.x - foldStartX
+            const relY = vertex.y - foldStartY
+            const relZ = vertex.z
 
-            // Calculate point relative to fold line
-            const relX = xCoord - foldStartX
-            const relY = yCoord - foldStartY
+            // Calculate perpendicular distance from fold line
+            const perpDist = relX * -foldDirY + relY * foldDirX
 
-            // Project point onto fold line
-            const projDist = relX * foldDirX + relY * foldDirY
+            // Only rotate points on one side of the fold line
+            if (perpDist > 0) {
+              // Apply rotation around the fold line
+              const rotatedY = relY * Math.cos(foldAngle) - relZ * Math.sin(foldAngle)
+              const rotatedZ = relY * Math.sin(foldAngle) + relZ * Math.cos(foldAngle)
 
-            // Calculate perpendicular distance
-            const perpDist = relX * perpX + relY * perpY
-
-            // Check if point is within fold line segment
-            if (projDist >= 0 && projDist <= foldLength) {
-              // Apply fold effect based on perpendicular distance
-              const foldDirection = foldLine.direction === "up" ? 1 : -1
-              const foldAngle = Math.PI / 6 // 30 degrees
-
-              // Only apply fold to one side of the line
-              if (perpDist > 0) {
-                // Calculate fold effect
-                const foldEffect = Math.min(Math.abs(perpDist), sheetLength / 2) * Math.sin(foldAngle) * foldDirection
-                zCoord += foldEffect
-
-                // Remove this color change line:
-                // const colorShift = Math.abs(foldEffect) * 20
-                // color = `hsl(${210 + colorShift}, 70%, ${60 - colorShift / 2}%)`
+              return {
+                x: vertex.x,
+                y: rotatedY + foldStartY,
+                z: rotatedZ,
               }
+            } else {
+              return vertex
             }
-          }
-        })
+          })
 
-        points.push({ x: xCoord, y: yCoord, z: zCoord, color })
+          const foldedSegment = {
+            vertices: rotatedVertices,
+            color: "#88ccff",
+          }
+
+          segments.push(baseSegment, foldedSegment)
+        }
+      })
+
+      // If no valid segments were created, add a flat sheet
+      if (segments.length === 0) {
+        segments.push({
+          vertices: [
+            { x: -sheetWidth / 2, y: -sheetLength / 2, z: 0 },
+            { x: sheetWidth / 2, y: -sheetLength / 2, z: 0 },
+            { x: sheetWidth / 2, y: sheetLength / 2, z: 0 },
+            { x: -sheetWidth / 2, y: sheetLength / 2, z: 0 },
+          ],
+          color: "#88ccff",
+        })
       }
     }
 
-    return { points, gridSize, sheetWidth, sheetLength }
+    return segments
   }, [width, length, foldLines])
 
-  // Draw the sheet with folds
+  // Draw a flat segment
+  const drawSegment = useCallback(
+    (ctx: CanvasRenderingContext2D, segment: any, centerX: number, centerY: number) => {
+      // Project all vertices to 2D
+      const projectedVertices = segment.vertices.map((vertex: any) =>
+        project3DTo2D(vertex.x, vertex.y, vertex.z, rotation),
+      )
+
+      // Apply zoom and pan
+      const screenVertices = projectedVertices.map((vertex: any) => ({
+        x: centerX + vertex.x * zoom + panOffset.x,
+        y: centerY - vertex.y * zoom + panOffset.y,
+      }))
+
+      // Draw the segment
+      ctx.fillStyle = segment.color
+      // ctx.strokeStyle = "#333333"
+      // ctx.lineWidth = 1
+
+      ctx.beginPath()
+      screenVertices.forEach((vertex: any, index: number) => {
+        if (index === 0) {
+          ctx.moveTo(vertex.x, vertex.y)
+        } else {
+          ctx.lineTo(vertex.x, vertex.y)
+        }
+      })
+      ctx.closePath()
+      ctx.fill()
+      // ctx.stroke()
+    },
+    [rotation, zoom, panOffset],
+  )
+
+  // Draw the sheet with segments
   const drawSheet = useCallback(
     (ctx: CanvasRenderingContext2D, centerX: number, centerY: number) => {
-      const { points, gridSize, sheetWidth, sheetLength } = createSheetGrid()
+      const segments = createSheetSegments()
 
-      // Draw grid cells
-      for (let y = 0; y < gridSize; y++) {
-        for (let x = 0; x < gridSize; x++) {
-          // Get the four corners of this grid cell
-          const idx1 = y * (gridSize + 1) + x
-          const idx2 = y * (gridSize + 1) + (x + 1)
-          const idx3 = (y + 1) * (gridSize + 1) + (x + 1)
-          const idx4 = (y + 1) * (gridSize + 1) + x
-
-          const p1 = points[idx1]
-          const p2 = points[idx2]
-          const p3 = points[idx3]
-          const p4 = points[idx4]
-
-          // Project to 2D
-          const proj1 = project3DTo2D(p1.x, p1.y, p1.z, rotation)
-          const proj2 = project3DTo2D(p2.x, p2.y, p2.z, rotation)
-          const proj3 = project3DTo2D(p3.x, p3.y, p3.z, rotation)
-          const proj4 = project3DTo2D(p4.x, p4.y, p4.z, rotation)
-
-          // Apply zoom and pan
-          const screen1 = { x: centerX + proj1.x * zoom + panOffset.x, y: centerY - proj1.y * zoom + panOffset.y }
-          const screen2 = { x: centerX + proj2.x * zoom + panOffset.x, y: centerY - proj2.y * zoom + panOffset.y }
-          const screen3 = { x: centerX + proj3.x * zoom + panOffset.x, y: centerY - proj3.y * zoom + panOffset.y }
-          const screen4 = { x: centerX + proj4.x * zoom + panOffset.x, y: centerY - proj4.y * zoom + panOffset.y }
-
-          // Calculate average color - use consistent color instead
-          // const avgZ = (p1.z + p2.z + p3.z + p4.z) / 4
-          // const colorShift = Math.abs(avgZ) * 20
-          // const color = `hsl(${210 + colorShift}, 70%, ${60 - colorShift / 2}%)`
-          const color = "#88ccff"
-
-          // Draw the grid cell
-          ctx.fillStyle = color
-          ctx.strokeStyle = "#333333"
-          ctx.lineWidth = 0.5
-
-          ctx.beginPath()
-          ctx.moveTo(screen1.x, screen1.y)
-          ctx.lineTo(screen2.x, screen2.y)
-          ctx.lineTo(screen3.x, screen3.y)
-          ctx.lineTo(screen4.x, screen4.y)
-          ctx.closePath()
-          ctx.fill()
-          ctx.stroke()
-        }
-      }
+      // Draw all segments
+      segments.forEach((segment) => {
+        drawSegment(ctx, segment, centerX, centerY)
+      })
 
       // Draw fold lines
+      const maxDimension = Math.max(width, length)
+      const baseFactor = 120 / maxDimension
+      const scaleFactor = baseFactor * 0.8
+      const sheetWidth = width * scaleFactor
+      const sheetLength = length * scaleFactor
+
       foldLines.forEach((foldLine) => {
         // Convert fold line to 3D coordinates
         const foldStartX = (foldLine.startPoint.x / width) * sheetWidth - sheetWidth / 2
@@ -194,13 +220,9 @@ export function SheetMetal3DCanvas({ width, length, foldLines }: SheetMetal3DCan
         const foldEndX = (foldLine.endPoint.x / width) * sheetWidth - sheetWidth / 2
         const foldEndY = (foldLine.endPoint.y / length) * sheetLength - sheetLength / 2
 
-        // Find z-coordinates at fold line points
-        const startZ = 0
-        const endZ = 0
-
         // Project to 2D
-        const projStart = project3DTo2D(foldStartX, foldStartY, startZ, rotation)
-        const projEnd = project3DTo2D(foldEndX, foldEndY, endZ, rotation)
+        const projStart = project3DTo2D(foldStartX, foldStartY, 0, rotation)
+        const projEnd = project3DTo2D(foldEndX, foldEndY, 0, rotation)
 
         // Apply zoom and pan
         const screenStart = {
@@ -218,7 +240,7 @@ export function SheetMetal3DCanvas({ width, length, foldLines }: SheetMetal3DCan
         ctx.stroke()
       })
     },
-    [createSheetGrid, rotation, zoom, panOffset],
+    [createSheetSegments, drawSegment, rotation, zoom, panOffset, width, length, foldLines],
   )
 
   // Main drawing function
